@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "forge-std/console.sol";
 
 contract RankedChoice is EIP712 {
     /*//////////////////////////////////////////////////////////////
@@ -47,6 +48,9 @@ contract RankedChoice is EIP712 {
         _rankCandidates(orderedCandidates, msg.sender);
     }
 
+    // audit-medium here in the signature there are no nonce and chain id to prevent replay attack
+    // It's not a big problem if this contract is only used in one blockchain but if this contract is deployed in another
+    // blockchain then it can be problematic
     function rankCandidatesBySig(
         address[] memory orderedCandidates,
         bytes memory signature
@@ -58,6 +62,7 @@ contract RankedChoice is EIP712 {
     }
 
     function selectPresident() external {
+        // audit-high s_previousVoteEndTimeStamp is not defined so block.time - 0 > i_presidentalDuration is true
         if (
             block.timestamp - s_previousVoteEndTimeStamp <=
             i_presidentalDuration
@@ -76,6 +81,10 @@ contract RankedChoice is EIP712 {
             }
         }
 
+        console.log("Canditate list : ");
+        for (uint i = 0; i < s_candidateList.length; i++) {
+            console.log(s_candidateList[i]);
+        }
         address[] memory winnerList = _selectPresidentRecursive(
             s_candidateList,
             0
@@ -127,16 +136,26 @@ contract RankedChoice is EIP712 {
         uint256 fewestVotes = s_candidateVotesByRound[fewestVotesCandidate][
             s_voteNumber
         ][roundNumber];
+        console.log(" candidate : ");
+        console.log(fewestVotesCandidate);
+        console.log(" vote : ");
+        console.log(fewestVotes);
 
         for (uint256 i = 1; i < candidateList.length; i++) {
             uint256 votes = s_candidateVotesByRound[candidateList[i]][
                 s_voteNumber
             ][roundNumber];
+            console.log(" candidate : ");
+            console.log(candidateList[i]);
+            console.log(" vote : ");
+            console.log(votes);
             if (votes < fewestVotes) {
                 fewestVotes = votes;
                 fewestVotesCandidate = candidateList[i];
             }
         }
+        console.log("fewestVotesCandidate: ");
+        console.log(fewestVotesCandidate);
 
         address[] memory newCandidateList = new address[](
             candidateList.length - 1
@@ -151,6 +170,10 @@ contract RankedChoice is EIP712 {
             } else {
                 newCandidateList[i] = candidateList[i];
             }
+        }
+        console.log("New Canditate list : ");
+        for (uint i = 0; i < newCandidateList.length; i++) {
+            console.log(newCandidateList[i]);
         }
 
         return _selectPresidentRecursive(newCandidateList, roundNumber + 1);
@@ -167,7 +190,8 @@ contract RankedChoice is EIP712 {
         if (!_isInArray(VOTERS, voter)) {
             revert RankedChoice__InvalidVoter();
         }
-
+        // @audit-high we are not checking about duplicate address in the orderedCandidates. So a malicious voter
+        // can add an orderedCanditate with the same address
         // Internal Effects
         s_rankings[voter][s_voteNumber] = orderedCandidates;
     }
